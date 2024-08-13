@@ -1,0 +1,116 @@
+import tensorflow as tf
+from tensorflow.keras.applications import ResNet50
+from tensorflow.keras.models import Model
+import numpy as np
+
+# Load pre-trained ResNet50 model + higher level layers
+base_model = ResNet50(weights='imagenet')
+model = Model(inputs=base_model.input, outputs=base_model.layers[-2].output)
+
+def extract_features(image_path):
+    img = tf.keras.preprocessing.image.load_img(image_path, target_size=(224, 224))
+    img = tf.keras.preprocessing.image.img_to_array(img)
+    img = tf.keras.applications.resnet50.preprocess_input(img)
+    img = np.expand_dims(img, axis=0)
+    features = model.predict(img)
+    return features
+import os
+import json
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+
+# Load and preprocess the MS COCO dataset
+def load_coco_dataset(json_path, image_dir):
+    with open(json_path, 'r') as f:
+        data = json.load(f)
+    
+    image_paths = []
+    captions = []
+    for item in data['annotations']:
+        image_id = item['image_id']
+        caption = item['caption']
+        image_path = os.path.join(image_dir, f'{image_id:012d}.jpg')
+        image_paths.append(image_path)
+        captions.append(caption)
+    
+    return image_paths, captions
+
+# Example usage
+image_paths, captions = load_coco_dataset('captions_train2014.json', 'train2014')
+
+# Tokenize captions
+tokenizer = Tokenizer()
+tokenizer.fit_on_texts(captions)
+sequences = tokenizer.texts_to_sequences(captions)
+word_index = tokenizer.word_index
+
+# Pad sequences
+max_length = max(len(seq) for seq in sequences)
+captions_padded = pad_sequences(sequences, maxlen=max_length, padding='post')
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Input, Embedding, LSTM, Dense, Dropout, add
+
+vocab_size = len(word_index) + 1
+embedding_dim = 256
+units = 512
+
+def create_captioning_model():
+    # Image feature extractor model
+    inputs1 = Input(shape=(2048,))
+    fe1 = Dropout(0.5)(inputs1)
+    fe2 = Dense(embedding_dim, activation='relu')(fe1)
+
+    # Sequence model
+    inputs2 = Input(shape=(max_length,))
+    se1 = Embedding(vocab_size, embedding_dim, mask_zero=True)(inputs2)
+    se2 = Dropout(0.5)(se1)
+    se3 = LSTM(units)(se2)
+
+    # Decoder model
+    decoder1 = add([fe2, se3])
+    decoder2 = Dense(units, activation='relu')(decoder1)
+    outputs = Dense(vocab_size, activation='softmax')(decoder2)
+
+    model = Model(inputs=[inputs1, inputs2], outputs=outputs)
+    return model
+
+model = create_captioning_model()
+model.compile(loss='categorical_crossentropy', optimizer='adam')
+EPOCHS = 10
+BATCH_SIZE = 64
+
+for epoch in range(EPOCHS):
+    for i in range(0, len(image_paths), BATCH_SIZE):
+        batch_image_paths = image_paths[i:i+BATCH_SIZE]
+        batch_captions = captions_padded[i:i+BATCH_SIZE]
+
+        # Extract features
+        batch_features = np.array([extract_features(p) for p in batch_image_paths])
+        
+        # One-hot encode targets
+        targets = np.zeros((BATCH_SIZE, max_length, vocab_size))
+        for j, seq in enumerate(batch_captions):
+            for k, word in enumerate(seq):
+                if word != 0:
+                    targets[j, k, word] = 1.0
+
+        model.fit([batch_features, batch_captions], targets, epochs=1, verbose=1)
+def generate_caption(model, image_path, tokenizer, max_length):
+    features = extract_features(image_path)
+    input_text = 'startseq'
+    for _ in range(max_length):
+        sequence = tokenizer.texts_to_sequences([input_text])[0]
+        sequence = pad_sequences([sequence], maxlen=max_length, padding='post')
+        yhat = model.predict([features, sequence], verbose=0)
+        yhat = np.argmax(yhat)
+        word = tokenizer.index_word[yhat]
+        if word is None:
+            break
+        input_text += ' ' + word
+        if word == 'endseq':
+            break
+    return input_text
+
+# Example usage
+caption = generate_caption(model, 'example.jpg', tokenizer, max_length)
+print(caption)
