@@ -1,0 +1,30 @@
+import re
+def get_response(user_input):
+    if re.search(r'hello|hi|hey', user_input, re.I):
+        return "Hello! How can I help you today?"
+    elif re.search(r'how are you', user_input, re.I):
+        return "I'm just a bot, but I'm here to help you!"
+    elif re.search(r'what is your name', user_input, re.I):
+        return "I am a simple chatbot created to assist you."
+    elif re.search(r'bye|goodbye|see you', user_input, re.I):
+        return "Goodbye! Have a great day!"
+    elif re.search(r'time|date', user_input, re.I):
+        import datetime
+        now = datetime.datetime.now()
+        return f"Current date and time is {now.strftime('%Y-%m-%d %H:%M:%S')}."
+    elif re.search(r'help|support', user_input, re.I):
+        return "Sure! How can I assist you today?"
+    elif re.search(r'weather', user_input, re.I):
+        return "I can't provide real-time weather updates right now, but you can check weather websites or apps."
+    else:
+        return "I'm sorry, I don't understand that. Can you please rephrase?"
+def run_chatbot():
+    print("Chatbot: Hello! Type 'exit' to end the conversation.")
+    while True:
+        user_input = input("You: ")
+        if user_input.lower() == 'exit':
+            print("Chatbot: Goodbye!")
+            break
+        response = get_response(user_input)
+        print(f"Chatbot: {response}")
+run_chatbot()
